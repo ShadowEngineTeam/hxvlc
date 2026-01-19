@@ -4,7 +4,7 @@
 
 # hxvlc
 
-![](https://img.shields.io/github/repo-size/MAJigsaw77/hxvlc) ![](https://badgen.net/github/open-issues/MAJigsaw77/hxvlc) ![](https://badgen.net/badge/license/MIT/green)
+![](https://img.shields.io/github/repo-size/FNF-SE/hxvlc) ![](https://badgen.net/badge/license/MIT/green)
 
 A Haxe/[OpenFL](https://www.openfl.org) library for **@:native** video playback using [libVLC](https://www.videolan.org/vlc/libvlc.html).
 
@@ -22,15 +22,11 @@ A Haxe/[OpenFL](https://www.openfl.org) library for **@:native** video playback 
 
 To install **hxvlc**, follow these steps:
 
-1. **Haxelib Installation**
+1. **Haxelib Git Installation**
    ```bash
-   haxelib install hxvlc
+   haxelib git hxvlc https://github.com/FNF-SE/hxvlc.git
    ```
-2. **Haxelib Git Installation (for latest updates)**
-   ```bash
-   haxelib git hxvlc https://github.com/MAJigsaw77/hxvlc.git
-   ```
-3. **Project Configuration** (Add the following code to your **project.xml** file)
+2. **Project Configuration** (Add the following code to your **project.xml** file)
    ```xml
    <section if="cpp">
    	<haxelib name="hxvlc" if="desktop || mobile" />
@@ -96,11 +92,13 @@ nix-env -iA nixpkgs.vlc
 
 - Explore the [Samples Folder](samples/) for examples of using this library with OpenFL and Flixel.
 
-- Visit the [API Documentation](https://majigsaw77.github.io/hxvlc) for detailed information on available functionalities.
+- Visit the [hxvlc API Documentation](https://majigsaw77.github.io/hxvlc) for detailed information on available functionalities.
 
 ### Licensing
 
-**hxvlc** is made available under the **MIT License**. Check [LICENSE](./LICENSE) for more information.
+This **hxvlc fork** is licensed under the **MIT License**. See [LICENSE](LICENSE) for details.
+
+**hxvlc** is made available under the **MIT License**. Check [LICENSE-hxvlc](./LICENSE-hxvlc) for more information.
 
 <a href="https://www.videolan.org/vlc/libvlc.html">
 	<img src="https://images.videolan.org/images/goodies/Cone-Video-small.png" align="right" />
