@@ -6,7 +6,7 @@ import flixel.FlxG;
 import haxe.io.Bytes;
 import haxe.io.Path;
 
-import hxvlc.externs.Types;
+import hxvlc.externs.LibVLC;
 import hxvlc.openfl.Video;
 import hxvlc.util.Location;
 import hxvlc.util.Util;
