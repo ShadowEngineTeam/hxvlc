@@ -135,17 +135,10 @@ class Handle
 			args.push_back("--aout=none"); // Disable audio output (we use amem)
 			args.push_back("--intf=none"); // Disable interface / UI
 			args.push_back("--vout=none"); // Disable video output (we use vmem)
-
 			args.push_back("--text-renderer=freetype"); // Use Freetype for subtitles/text overlays
 
-			#if ios
-			args.push_back("--no-color"); // Disable colored console output (cleaner Xcode log)
-			#end
-
-			#if !HXVLC_SHARE_DIRECTORY
-			args.push_back("--no-lua"); // Disable Lua scripting engine if not using shared directory
-			#end
-
+			args.push_back("--no-color"); // Disable colored console output
+			args.push_back("--no-lua"); // Disable Lua scripting engine
 			args.push_back("--no-interact"); // Disable interaction prompts
 			args.push_back("--no-keyboard-events"); // Disable keyboard input
 			args.push_back("--no-mouse-events"); // Disable mouse events
@@ -248,41 +241,6 @@ class Handle
 		return LibVLC.get_changeset();
 	}
 
-	#if android
-	@:noCompletion
-	private static function setupEnvVariables():Void
-	{
-		final homePath:String = Path.join([Path.directory(System.applicationStorageDirectory), 'libvlc']);
-
-		#if HXVLC_SHARE_DIRECTORY
-		final libvlcLibrary:Future<AssetLibrary> = Assets.loadLibrary('libvlc');
-		libvlcLibrary.onComplete(function(library:AssetLibrary):Void
-		{
-			@:nullSafety(Off)
-			for (file in library.list(null))
-			{
-				final savePath:String = Path.join([homePath, '.share', file.substring(file.indexOf('/', 0) + 1, file.length)]);
-
-				Util.mkDirs(Path.directory(savePath));
-
-				try
-				{
-					if (!FileSystem.exists(savePath))
-						File.saveBytes(savePath, library.getBytes(file));
-				}
-				catch (e:Exception)
-					trace('Failed to save file "$savePath", ${e.message}.');
-			}
-		});
-		libvlcLibrary.onError(function(error:String):Void
-		{
-			trace('Failed to load library: libvlc, Error: $error');
-		});
-		#end
-
-		Sys.putEnv('HOME', homePath);
-	}
-	#else
 	@:noCompletion
 	private static function setupEnvVariables():Void
 	{
@@ -300,7 +258,6 @@ class Handle
 			Sys.putEnv('VLC_PLUGIN_PATH', pluginPath);
 		#end
 	}
-	#end
 
 	#if HXVLC_LOGGING
 	@:keep
