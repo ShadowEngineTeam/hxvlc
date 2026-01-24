@@ -21,7 +21,6 @@ import haxe.io.BytesData;
 import haxe.io.BytesInput;
 
 import hxvlc.externs.LibVLC;
-import hxvlc.externs.Types;
 import hxvlc.openfl.textures.VideoTexture;
 import hxvlc.util.Handle;
 import hxvlc.util.MainLoop;
