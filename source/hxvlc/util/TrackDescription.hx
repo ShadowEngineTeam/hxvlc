@@ -2,7 +2,7 @@ package hxvlc.util;
 
 import cpp.Struct;
 
-import hxvlc.externs.Types;
+import hxvlc.externs.LibVLC;
 
 /**
  * Represents a description for video, audio tracks, and subtitles.
