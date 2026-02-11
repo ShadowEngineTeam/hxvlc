@@ -4,7 +4,7 @@
 
 # hxvlc
 
-![](https://img.shields.io/github/repo-size/FNF-SE/hxvlc) ![](https://badgen.net/badge/license/MIT/green)
+![](https://img.shields.io/github/repo-size/ShadowEngineTeam/hxvlc) ![](https://badgen.net/badge/license/MIT/green)
 
 A Haxe/[OpenFL](https://www.openfl.org) library for **@:native** video playback using [libVLC](https://www.videolan.org/vlc/libvlc.html).
 
@@ -24,7 +24,7 @@ To install **hxvlc**, follow these steps:
 
 1. **Haxelib Git Installation**
    ```bash
-   haxelib git hxvlc https://github.com/FNF-SE/hxvlc.git
+   haxelib git hxvlc https://github.com/ShadowEngineTeam/hxvlc.git
    ```
 2. **Project Configuration** (Add the following code to your **project.xml** file)
    ```xml
