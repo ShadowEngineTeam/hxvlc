@@ -1,0 +1,422 @@
+From 1c3e245efb226cb4fe2a85562513344bf7dc74a2 Mon Sep 17 00:00:00 2001
+From: Homura <egzozu.be.bas@gmail.com>
+Date: Mon, 16 Feb 2026 01:11:26 +0300
+Subject: [PATCH] use ANGLE instead of EAGL
+
+---
+ modules/video_output/ios.m | 192 +++++++++++++++++++++----------------
+ 1 file changed, 110 insertions(+), 82 deletions(-)
+
+diff --git a/modules/video_output/ios.m b/modules/video_output/ios.m
+index 957b312f45..7ff80c766d 100644
+--- a/modules/video_output/ios.m
++++ b/modules/video_output/ios.m
+@@ -1,5 +1,5 @@
+ /*****************************************************************************
+- * ios.m: iOS OpenGL ES provider
++ * ios.m: iOS OpenGL ES provider (modified to use ANGLE/EGL instead of EAGL)
+  *****************************************************************************
+  * Copyright (C) 2001-2017 VLC authors and VideoLAN
+  * $Id$
+@@ -31,12 +31,15 @@
+  *****************************************************************************/
+ 
+ #import <UIKit/UIKit.h>
+-#import <OpenGLES/EAGL.h>
+-#import <OpenGLES/ES2/gl.h>
+-#import <OpenGLES/ES2/glext.h>
+ #import <QuartzCore/QuartzCore.h>
++#import <Metal/Metal.h>
+ #import <dlfcn.h>
+ 
++#include <EGL/egl.h>
++#include <EGL/eglext.h>
++#include <GLES2/gl2.h>
++#include <GLES2/gl2ext.h>
++
+ #ifdef HAVE_CONFIG_H
+ # import "config.h"
+ #endif
+@@ -87,8 +90,10 @@ vlc_module_end ()
+ 
+ @interface VLCOpenGLES2VideoView : UIView {
+     vout_display_t *_voutDisplay;
+-    EAGLContext *_eaglContext;
+-    CAEAGLLayer *_layer;
++    EGLDisplay _eglDisplay;
++    EGLContext _eglContext;
++    EGLSurface _eglSurface;
++    CAMetalLayer *_layer;
+ 
+     vlc_mutex_t _mutex;
+     vlc_cond_t  _gl_attached_wait;
+@@ -96,7 +101,7 @@ vlc_module_end ()
+ 
+     BOOL _bufferNeedReset;
+     BOOL _appActive;
+-    BOOL _eaglEnabled;
++    BOOL _eglEnabled;
+     BOOL _placeInvalidated;
+ 
+     UIView *_viewContainer;
+@@ -113,8 +118,8 @@ vlc_module_end ()
+ 
+ - (id)initWithFrame:(CGRect)frame andVD:(vout_display_t*)vd;
+ - (void)cleanAndRelease:(BOOL)flushed;
+-- (BOOL)makeCurrent:(EAGLContext **)previousEaglContext withGL:(vlc_gl_t *)gl;
+-- (void)releaseCurrent:(EAGLContext *)previousEaglContext;
++- (BOOL)makeCurrent:(EGLContext *)previousEglContext withGL:(vlc_gl_t *)gl;
++- (void)releaseCurrent:(EGLContext)previousEglContext;
+ - (void)presentRenderbuffer;
+ 
+ - (void)updateVoutCfg:(const vout_display_cfg_t *)cfg withVGL:(vout_display_opengl_t *)vgl;
+@@ -134,9 +139,7 @@ struct gl_sys
+ {
+     VLCOpenGLES2VideoView *glESView;
+     vout_display_opengl_t *vgl;
+-    GLuint renderBuffer;
+-    GLuint frameBuffer;
+-    EAGLContext *previousEaglContext;
++    EGLContext previousEglContext;
+ };
+ 
+ static void *OurGetProcAddress(vlc_gl_t *gl, const char *name)
+@@ -162,7 +165,7 @@ static int Open(vlc_object_t *this)
+     sys->picturePool = NULL;
+     sys->gl = NULL;
+ 
+-    var_Create(vd->obj.parent, "ios-eaglcontext", VLC_VAR_ADDRESS);
++    var_Create(vd->obj.parent, "ios-eglcontext", VLC_VAR_ADDRESS);
+ 
+     @autoreleasepool {
+         /* setup the actual OpenGL ES view */
+@@ -174,7 +177,7 @@ static int Open(vlc_object_t *this)
+                                              waitUntilDone:YES];
+         if (!sys->glESView) {
+             msg_Err(vd, "Creating OpenGL ES 2 view failed");
+-            var_Destroy(vd->obj.parent, "ios-eaglcontext");
++            var_Destroy(vd->obj.parent, "ios-eglcontext");
+             return VLC_EGENERIC;
+         }
+ 
+@@ -191,7 +194,6 @@ static int Open(vlc_object_t *this)
+             goto bailout;
+         glsys->glESView = sys->glESView;
+         glsys->vgl = NULL;
+-        glsys->renderBuffer = glsys->frameBuffer = 0;
+ 
+         /* Initialize common OpenGL video display */
+         sys->gl->makeCurrent = GLESMakeCurrent;
+@@ -256,7 +258,7 @@ static void Close (vlc_object_t *this)
+ 
+         [sys->glESView cleanAndRelease:flushed];
+     }
+-    var_Destroy(vd->obj.parent, "ios-eaglcontext");
++    var_Destroy(vd->obj.parent, "ios-eglcontext");
+ }
+ 
+ /*****************************************************************************
+@@ -351,7 +353,7 @@ static int GLESMakeCurrent(vlc_gl_t *gl)
+ {
+     struct gl_sys *sys = gl->sys;
+ 
+-    if (![sys->glESView makeCurrent:&sys->previousEaglContext withGL:gl])
++    if (![sys->glESView makeCurrent:&sys->previousEglContext withGL:gl])
+         return VLC_EGENERIC;
+     return VLC_SUCCESS;
+ }
+@@ -360,7 +362,7 @@ static void GLESReleaseCurrent(vlc_gl_t *gl)
+ {
+     struct gl_sys *sys = gl->sys;
+ 
+-    [sys->glESView releaseCurrent:sys->previousEaglContext];
++    [sys->glESView releaseCurrent:sys->previousEglContext];
+ }
+ 
+ static void GLESSwap(vlc_gl_t *gl)
+@@ -378,7 +380,7 @@ static void GLESSwap(vlc_gl_t *gl)
+ 
+ + (Class)layerClass
+ {
+-    return [CAEAGLLayer class];
++    return [CAMetalLayer class];
+ }
+ 
+ + (void)getNewView:(NSArray *)value
+@@ -398,7 +400,7 @@ static void GLESSwap(vlc_gl_t *gl)
+     if (!self)
+         return nil;
+ 
+-    _eaglEnabled = YES;
++    _eglEnabled = YES;
+     _bufferNeedReset = YES;
+     _voutDisplay = vd;
+     _cfg = *_voutDisplay->cfg;
+@@ -407,39 +409,68 @@ static void GLESSwap(vlc_gl_t *gl)
+     vlc_cond_init(&_gl_attached_wait);
+     _gl_attached = YES;
+ 
+-    /* the following creates a new OpenGL ES context with the API version we
+-     * need if there is already an active context created by another OpenGL
+-     * provider we cache it and restore analog to the
+-     * makeCurrent/releaseCurrent pattern used through-out the class */
+-    EAGLContext *previousEaglContext = [EAGLContext currentContext];
++    /* Initialize EGL */
++    _eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
++    if (_eglDisplay == EGL_NO_DISPLAY) {
++        [self release];
++        return nil;
++    }
+ 
+-    _eaglContext = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES2];
++    EGLint major, minor;
++    if (!eglInitialize(_eglDisplay, &major, &minor)) {
++        [self release];
++        return nil;
++    }
+ 
+-    if (unlikely(!_eaglContext)
+-     || unlikely(![EAGLContext setCurrentContext:_eaglContext]))
+-    {
+-        [_eaglContext release];
++    EGLint configAttributes[] = {
++        EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
++        EGL_RED_SIZE, 8,
++        EGL_GREEN_SIZE, 8,
++        EGL_BLUE_SIZE, 8,
++        EGL_ALPHA_SIZE, 8,
++        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
++        EGL_NONE
++    };
++
++    EGLConfig config;
++    EGLint numConfigs;
++    if (!eglChooseConfig(_eglDisplay, configAttributes, &config, 1, &numConfigs)) {
++        eglTerminate(_eglDisplay);
+         [self release];
+         return nil;
+     }
+-    [self releaseCurrent:previousEaglContext];
+ 
+-    /* Set "ios-eaglcontext" to be used by cvpx fitlers/glconv */
+-    var_SetAddress(_voutDisplay->obj.parent, "ios-eaglcontext", _eaglContext);
++    EGLint contextAttributes[] = {
++        EGL_CONTEXT_CLIENT_VERSION, 2,
++        EGL_NONE
++    };
+ 
+-    _layer = (CAEAGLLayer *)self.layer;
+-    _layer.drawableProperties = [NSDictionary dictionaryWithObject:kEAGLColorFormatRGBA8 forKey: kEAGLDrawablePropertyColorFormat];
++    _eglContext = eglCreateContext(_eglDisplay, config, EGL_NO_CONTEXT, contextAttributes);
++    if (_eglContext == EGL_NO_CONTEXT) {
++        eglTerminate(_eglDisplay);
++        [self release];
++        return nil;
++    }
++
++    _layer = (CAMetalLayer *)self.layer;
++    _layer.device = MTLCreateSystemDefaultDevice();
++    _layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
++    _layer.framebufferOnly = YES;
+     _layer.opaque = YES;
+ 
+     self.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+ 
+     if (![self fetchViewContainer])
+     {
+-        [_eaglContext release];
++        eglDestroyContext(_eglDisplay, _eglContext);
++        eglTerminate(_eglDisplay);
+         [self release];
+         return nil;
+     }
+ 
++    /* Set "ios-eglcontext" to be used by cvpx filters/glconv */
++    var_SetAddress(_voutDisplay->obj.parent, "ios-eglcontext", _eglContext);
++
+     /* */
+     [[NSNotificationCenter defaultCenter] addObserver:self
+                                              selector:@selector(applicationStateChanged:)
+@@ -524,17 +555,20 @@ static void GLESSwap(vlc_gl_t *gl)
+     [_viewContainer release];
+ 
+     assert(!_gl_attached);
+-    [_eaglContext release];
++    eglDestroyContext(_eglDisplay, _eglContext);
++    if (_eglSurface != EGL_NO_SURFACE)
++        eglDestroySurface(_eglDisplay, _eglSurface);
++    eglTerminate(_eglDisplay);
+     [self release];
+ }
+ 
+ - (void)cleanAndRelease:(BOOL)flushed
+ {
+     vlc_mutex_lock(&_mutex);
+-    if (_eaglEnabled && !flushed)
+-        [self flushEAGLLocked];
++    if (_eglEnabled && !flushed)
++        [self flushEGLLocked];
+     _voutDisplay = nil;
+-    _eaglEnabled = NO;
++    _eglEnabled = NO;
+     vlc_mutex_unlock(&_mutex);
+ 
+     [self performSelectorOnMainThread:@selector(cleanAndReleaseFromMainThread)
+@@ -562,40 +596,34 @@ static void GLESSwap(vlc_gl_t *gl)
+ {
+     struct gl_sys *glsys = gl->sys;
+ 
+-    if (glsys->frameBuffer != 0)
+-    {
+-        /* clear frame buffer */
+-        glDeleteFramebuffers(1, &glsys->frameBuffer);
+-        glsys->frameBuffer = 0;
++    // For EGL, we need to recreate the surface if necessary
++    if (_eglSurface != EGL_NO_SURFACE) {
++        eglDestroySurface(_eglDisplay, _eglSurface);
++        _eglSurface = EGL_NO_SURFACE;
+     }
+ 
+-    if (glsys->renderBuffer != 0)
+-    {
+-        /* clear render buffer */
+-        glDeleteRenderbuffers(1, &glsys->renderBuffer);
+-        glsys->renderBuffer = 0;
++    // Create a new surface from the Metal layer
++    // Note: ANGLE typically uses a window surface, but for Metal, we might need to adapt
++    // Assuming ANGLE provides a way to create EGL surface from CAMetalLayer
++    // This is a placeholder; actual implementation may require ANGLE-specific extensions
++    _eglSurface = eglCreateWindowSurface(_eglDisplay, config, (__bridge EGLNativeWindowType)_layer, NULL);
++    if (_eglSurface == EGL_NO_SURFACE) {
++        msg_Err(_voutDisplay, "Failed to create EGL surface");
++        return NO;
+     }
+ 
+     glDisable(GL_DEPTH_TEST);
+ 
+-    glGenFramebuffers(1, &glsys->frameBuffer);
+-    glBindFramebuffer(GL_FRAMEBUFFER, glsys->frameBuffer);
+-
+-    glGenRenderbuffers(1, &glsys->renderBuffer);
+-    glBindRenderbuffer(GL_RENDERBUFFER, glsys->renderBuffer);
+-
+-    [_eaglContext renderbufferStorage:GL_RENDERBUFFER fromDrawable:_layer];
+-
+-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, glsys->renderBuffer);
+-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+-    {
+-        msg_Err(_voutDisplay, "Failed to make complete framebuffer object %x", glCheckFramebufferStatus(GL_FRAMEBUFFER));
++    // Bind the surface
++    if (!eglMakeCurrent(_eglDisplay, _eglSurface, _eglSurface, _eglContext)) {
++        msg_Err(_voutDisplay, "Failed to make EGL context current");
+         return NO;
+     }
++
+     return YES;
+ }
+ 
+-- (BOOL)makeCurrent:(EAGLContext **)previousEaglContext withGL:(vlc_gl_t *)gl
++- (BOOL)makeCurrent:(EGLContext **)previousEglContext withGL:(vlc_gl_t *)gl
+ {
+     vlc_mutex_lock(&_mutex);
+     assert(!_gl_attached);
+@@ -606,10 +634,10 @@ static void GLESSwap(vlc_gl_t *gl)
+         return NO;
+     }
+ 
+-    assert(_eaglEnabled);
+-    *previousEaglContext = [EAGLContext currentContext];
++    assert(_eglEnabled);
++    *previousEglContext = eglGetCurrentContext();
+ 
+-    if (![EAGLContext setCurrentContext:_eaglContext])
++    if (!eglMakeCurrent(_eglDisplay, _eglSurface, _eglSurface, _eglContext))
+     {
+         vlc_mutex_unlock(&_mutex);
+         return NO;
+@@ -645,15 +673,15 @@ static void GLESSwap(vlc_gl_t *gl)
+ 
+     if (resetBuffers && ![self doResetBuffers:gl])
+     {
+-        [self releaseCurrent:*previousEaglContext];
++        [self releaseCurrent:*previousEglContext];
+         return NO;
+     }
+     return YES;
+ }
+ 
+-- (void)releaseCurrent:(EAGLContext *)previousEaglContext
++- (void)releaseCurrent:(EGLContext *)previousEglContext
+ {
+-    [EAGLContext setCurrentContext:previousEaglContext];
++    eglMakeCurrent(_eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, previousEglContext);
+ 
+     vlc_mutex_lock(&_mutex);
+     assert(_gl_attached);
+@@ -664,7 +692,7 @@ static void GLESSwap(vlc_gl_t *gl)
+ 
+ - (void)presentRenderbuffer
+ {
+-    [_eaglContext presentRenderbuffer:GL_RENDERBUFFER];
++    eglSwapBuffers(_eglDisplay, _eglSurface);
+ }
+ 
+ - (void)layoutSubviews
+@@ -756,20 +784,20 @@ static void GLESSwap(vlc_gl_t *gl)
+                         waitUntilDone:NO];
+ }
+ 
+-- (void)flushEAGLLocked
++- (void)flushEGLLocked
+ {
+-    assert(_eaglEnabled);
++    assert(_eglEnabled);
+ 
+     /* Ensure that all previously submitted commands are drained from the
+      * command buffer and are executed by OpenGL ES before moving to the
+      * background.*/
+-    EAGLContext *previousEaglContext = [EAGLContext currentContext];
+-    if ([EAGLContext setCurrentContext:_eaglContext])
++    EGLContext previousEglContext = eglGetCurrentContext();
++    if (eglMakeCurrent(_eglDisplay, _eglSurface, _eglSurface, _eglContext))
+     {
+         glFinish();
+         glFlush();
+     }
+-    [EAGLContext setCurrentContext:previousEaglContext];
++    eglMakeCurrent(_eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, previousEglContext);
+ }
+ 
+ - (void)applicationStateChanged:(NSNotification *)notification
+@@ -782,21 +810,21 @@ static void GLESSwap(vlc_gl_t *gl)
+     {
+         _appActive = NO;
+ 
+-        /* Wait for the vout to unlock the eagl context before releasing
++        /* Wait for the vout to unlock the egl context before releasing
+          * it. */
+-        while (_gl_attached && _eaglEnabled)
++        while (_gl_attached && _eglEnabled)
+             vlc_cond_wait(&_gl_attached_wait, &_mutex);
+ 
+-        /* _eaglEnabled can change during the vlc_cond_wait
++        /* _eglEnabled can change during the vlc_cond_wait
+          * as the mutex is unlocked during that, so this check
+          * has to be done after the vlc_cond_wait! */
+-        if (_eaglEnabled) {
+-            [self flushEAGLLocked];
+-            _eaglEnabled = NO;
++        if (_eglEnabled) {
++            [self flushEGLLocked];
++            _eglEnabled = NO;
+         }
+     }
+     else if ([[notification name] isEqualToString:UIApplicationWillEnterForegroundNotification])
+-        _eaglEnabled = YES;
++        _eglEnabled = YES;
+     else
+     {
+         assert([[notification name] isEqualToString:UIApplicationDidBecomeActiveNotification]);
+-- 
+2.53.0.windows.1
+
