@@ -1,15 +1,15 @@
-From 65a639cc8268d378cdbc11952229f8bd40170d1d Mon Sep 17 00:00:00 2001
-From: MAJigsaw77 <77043862+MAJigsaw77@users.noreply.github.com>
-Date: Sat, 29 Nov 2025 20:11:14 +0200
+From 351555e2ddd90ab41f44d230110a88cba21b6897 Mon Sep 17 00:00:00 2001
+From: Homura <egzozu.be.bas@gmail.com>
+Date: Sun, 15 Feb 2026 23:08:17 +0300
 Subject: [PATCH] update the script with latest commit master
 
 ---
- extras/package/apple/build.conf | 55 +++++++++++++++++++++++++++++----
+ extras/package/apple/build.conf | 56 +++++++++++++++++++++++++++++----
  extras/package/apple/build.sh   | 20 +++++++-----
- 2 files changed, 61 insertions(+), 14 deletions(-)
+ 2 files changed, 62 insertions(+), 14 deletions(-)
 
 diff --git a/extras/package/apple/build.conf b/extras/package/apple/build.conf
-index cb72bec33e..4611f89713 100644
+index cb72bec33e..499d56356b 100644
 --- a/extras/package/apple/build.conf
 +++ b/extras/package/apple/build.conf
 @@ -11,11 +11,13 @@
@@ -96,16 +96,17 @@ index cb72bec33e..4611f89713 100644
  )
  
  #
-@@ -53,8 +99,6 @@ export VLC_CONTRIB_OPTIONS_TVOS=(
+@@ -53,8 +99,7 @@ export VLC_CONTRIB_OPTIONS_TVOS=(
  # Base configure options for VLC
  export VLC_CONFIG_OPTIONS_BASE=(
      --disable-sse
 -    --disable-mmx
 -    --disable-a52
++    --disable-gles2
      --disable-vcd
      --disable-libcddb
      --disable-macosx
-@@ -139,7 +183,6 @@ export VLC_MODULE_REMOVAL_LIST_BASE=(
+@@ -139,7 +184,6 @@ export VLC_MODULE_REMOVAL_LIST_BASE=(
      bluescreen
      erase
      speex_resampler
@@ -191,5 +192,5 @@ index e59f720360..098b656e6a 100755
  
  $MAKE || abort_err "Building VLC failed"
 -- 
-2.47.1.windows.1
+2.53.0.windows.1
 
