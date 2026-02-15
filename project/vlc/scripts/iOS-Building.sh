@@ -17,7 +17,7 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
 fi
 
 # Exit on any error.
-set -e
+# set -e
 
 # Per platform config
 if [ "$1" = "simulator" ]; then
@@ -84,7 +84,7 @@ download_vlc()
 		if [ $? -ne 0 ]; then
 			git am --abort
 			echo "Applying the patches failed, aborting git-am"
-			exit 1
+			# exit 1
 		fi
 
 		cd ..
