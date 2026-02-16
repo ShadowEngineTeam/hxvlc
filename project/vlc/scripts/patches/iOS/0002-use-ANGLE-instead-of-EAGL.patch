@@ -1,14 +1,14 @@
-From 1c3e245efb226cb4fe2a85562513344bf7dc74a2 Mon Sep 17 00:00:00 2001
+From 80f979a39430302edbfdd2cd834b77c09733f3d1 Mon Sep 17 00:00:00 2001
 From: Homura <egzozu.be.bas@gmail.com>
-Date: Mon, 16 Feb 2026 01:11:26 +0300
+Date: Mon, 16 Feb 2026 12:48:21 +0300
 Subject: [PATCH] use ANGLE instead of EAGL
 
 ---
- modules/video_output/ios.m | 192 +++++++++++++++++++++----------------
- 1 file changed, 110 insertions(+), 82 deletions(-)
+ modules/video_output/ios.m | 194 +++++++++++++++++++++----------------
+ 1 file changed, 112 insertions(+), 82 deletions(-)
 
 diff --git a/modules/video_output/ios.m b/modules/video_output/ios.m
-index 957b312f45..7ff80c766d 100644
+index 957b312f45..d2f2e71dfa 100644
 --- a/modules/video_output/ios.m
 +++ b/modules/video_output/ios.m
 @@ -1,5 +1,5 @@
@@ -37,7 +37,7 @@ index 957b312f45..7ff80c766d 100644
  #ifdef HAVE_CONFIG_H
  # import "config.h"
  #endif
-@@ -87,8 +90,10 @@ vlc_module_end ()
+@@ -87,8 +90,11 @@ vlc_module_end ()
  
  @interface VLCOpenGLES2VideoView : UIView {
      vout_display_t *_voutDisplay;
@@ -46,11 +46,12 @@ index 957b312f45..7ff80c766d 100644
 +    EGLDisplay _eglDisplay;
 +    EGLContext _eglContext;
 +    EGLSurface _eglSurface;
++    EGLConfig _eglConfig;
 +    CAMetalLayer *_layer;
  
      vlc_mutex_t _mutex;
      vlc_cond_t  _gl_attached_wait;
-@@ -96,7 +101,7 @@ vlc_module_end ()
+@@ -96,7 +102,7 @@ vlc_module_end ()
  
      BOOL _bufferNeedReset;
      BOOL _appActive;
@@ -59,7 +60,7 @@ index 957b312f45..7ff80c766d 100644
      BOOL _placeInvalidated;
  
      UIView *_viewContainer;
-@@ -113,8 +118,8 @@ vlc_module_end ()
+@@ -113,8 +119,8 @@ vlc_module_end ()
  
  - (id)initWithFrame:(CGRect)frame andVD:(vout_display_t*)vd;
  - (void)cleanAndRelease:(BOOL)flushed;
@@ -70,7 +71,7 @@ index 957b312f45..7ff80c766d 100644
  - (void)presentRenderbuffer;
  
  - (void)updateVoutCfg:(const vout_display_cfg_t *)cfg withVGL:(vout_display_opengl_t *)vgl;
-@@ -134,9 +139,7 @@ struct gl_sys
+@@ -134,9 +140,7 @@ struct gl_sys
  {
      VLCOpenGLES2VideoView *glESView;
      vout_display_opengl_t *vgl;
@@ -81,7 +82,7 @@ index 957b312f45..7ff80c766d 100644
  };
  
  static void *OurGetProcAddress(vlc_gl_t *gl, const char *name)
-@@ -162,7 +165,7 @@ static int Open(vlc_object_t *this)
+@@ -162,7 +166,7 @@ static int Open(vlc_object_t *this)
      sys->picturePool = NULL;
      sys->gl = NULL;
  
@@ -90,7 +91,7 @@ index 957b312f45..7ff80c766d 100644
  
      @autoreleasepool {
          /* setup the actual OpenGL ES view */
-@@ -174,7 +177,7 @@ static int Open(vlc_object_t *this)
+@@ -174,7 +178,7 @@ static int Open(vlc_object_t *this)
                                               waitUntilDone:YES];
          if (!sys->glESView) {
              msg_Err(vd, "Creating OpenGL ES 2 view failed");
@@ -99,7 +100,7 @@ index 957b312f45..7ff80c766d 100644
              return VLC_EGENERIC;
          }
  
-@@ -191,7 +194,6 @@ static int Open(vlc_object_t *this)
+@@ -191,7 +195,6 @@ static int Open(vlc_object_t *this)
              goto bailout;
          glsys->glESView = sys->glESView;
          glsys->vgl = NULL;
@@ -107,7 +108,7 @@ index 957b312f45..7ff80c766d 100644
  
          /* Initialize common OpenGL video display */
          sys->gl->makeCurrent = GLESMakeCurrent;
-@@ -256,7 +258,7 @@ static void Close (vlc_object_t *this)
+@@ -256,7 +259,7 @@ static void Close (vlc_object_t *this)
  
          [sys->glESView cleanAndRelease:flushed];
      }
@@ -116,7 +117,7 @@ index 957b312f45..7ff80c766d 100644
  }
  
  /*****************************************************************************
-@@ -351,7 +353,7 @@ static int GLESMakeCurrent(vlc_gl_t *gl)
+@@ -351,7 +354,7 @@ static int GLESMakeCurrent(vlc_gl_t *gl)
  {
      struct gl_sys *sys = gl->sys;
  
@@ -125,7 +126,7 @@ index 957b312f45..7ff80c766d 100644
          return VLC_EGENERIC;
      return VLC_SUCCESS;
  }
-@@ -360,7 +362,7 @@ static void GLESReleaseCurrent(vlc_gl_t *gl)
+@@ -360,7 +363,7 @@ static void GLESReleaseCurrent(vlc_gl_t *gl)
  {
      struct gl_sys *sys = gl->sys;
  
@@ -134,7 +135,7 @@ index 957b312f45..7ff80c766d 100644
  }
  
  static void GLESSwap(vlc_gl_t *gl)
-@@ -378,7 +380,7 @@ static void GLESSwap(vlc_gl_t *gl)
+@@ -378,7 +381,7 @@ static void GLESSwap(vlc_gl_t *gl)
  
  + (Class)layerClass
  {
@@ -143,7 +144,7 @@ index 957b312f45..7ff80c766d 100644
  }
  
  + (void)getNewView:(NSArray *)value
-@@ -398,7 +400,7 @@ static void GLESSwap(vlc_gl_t *gl)
+@@ -398,7 +401,7 @@ static void GLESSwap(vlc_gl_t *gl)
      if (!self)
          return nil;
  
@@ -152,7 +153,7 @@ index 957b312f45..7ff80c766d 100644
      _bufferNeedReset = YES;
      _voutDisplay = vd;
      _cfg = *_voutDisplay->cfg;
-@@ -407,39 +409,68 @@ static void GLESSwap(vlc_gl_t *gl)
+@@ -407,39 +410,69 @@ static void GLESSwap(vlc_gl_t *gl)
      vlc_cond_init(&_gl_attached_wait);
      _gl_attached = YES;
  
@@ -197,6 +198,7 @@ index 957b312f45..7ff80c766d 100644
          return nil;
      }
 -    [self releaseCurrent:previousEaglContext];
++    _eglConfig = config;
  
 -    /* Set "ios-eaglcontext" to be used by cvpx fitlers/glconv */
 -    var_SetAddress(_voutDisplay->obj.parent, "ios-eaglcontext", _eaglContext);
@@ -237,7 +239,7 @@ index 957b312f45..7ff80c766d 100644
      /* */
      [[NSNotificationCenter defaultCenter] addObserver:self
                                               selector:@selector(applicationStateChanged:)
-@@ -524,17 +555,20 @@ static void GLESSwap(vlc_gl_t *gl)
+@@ -524,17 +557,20 @@ static void GLESSwap(vlc_gl_t *gl)
      [_viewContainer release];
  
      assert(!_gl_attached);
@@ -262,7 +264,7 @@ index 957b312f45..7ff80c766d 100644
      vlc_mutex_unlock(&_mutex);
  
      [self performSelectorOnMainThread:@selector(cleanAndReleaseFromMainThread)
-@@ -562,40 +596,34 @@ static void GLESSwap(vlc_gl_t *gl)
+@@ -562,40 +598,34 @@ static void GLESSwap(vlc_gl_t *gl)
  {
      struct gl_sys *glsys = gl->sys;
  
@@ -286,7 +288,7 @@ index 957b312f45..7ff80c766d 100644
 +    // Note: ANGLE typically uses a window surface, but for Metal, we might need to adapt
 +    // Assuming ANGLE provides a way to create EGL surface from CAMetalLayer
 +    // This is a placeholder; actual implementation may require ANGLE-specific extensions
-+    _eglSurface = eglCreateWindowSurface(_eglDisplay, config, (__bridge EGLNativeWindowType)_layer, NULL);
++    _eglSurface = eglCreateWindowSurface(_eglDisplay, _eglConfig, (__bridge EGLNativeWindowType)_layer, NULL);
 +    if (_eglSurface == EGL_NO_SURFACE) {
 +        msg_Err(_voutDisplay, "Failed to create EGL surface");
 +        return NO;
@@ -320,7 +322,7 @@ index 957b312f45..7ff80c766d 100644
  {
      vlc_mutex_lock(&_mutex);
      assert(!_gl_attached);
-@@ -606,10 +634,10 @@ static void GLESSwap(vlc_gl_t *gl)
+@@ -606,10 +636,10 @@ static void GLESSwap(vlc_gl_t *gl)
          return NO;
      }
  
@@ -334,7 +336,7 @@ index 957b312f45..7ff80c766d 100644
      {
          vlc_mutex_unlock(&_mutex);
          return NO;
-@@ -645,15 +673,15 @@ static void GLESSwap(vlc_gl_t *gl)
+@@ -645,15 +675,15 @@ static void GLESSwap(vlc_gl_t *gl)
  
      if (resetBuffers && ![self doResetBuffers:gl])
      {
@@ -353,7 +355,7 @@ index 957b312f45..7ff80c766d 100644
  
      vlc_mutex_lock(&_mutex);
      assert(_gl_attached);
-@@ -664,7 +692,7 @@ static void GLESSwap(vlc_gl_t *gl)
+@@ -664,7 +694,7 @@ static void GLESSwap(vlc_gl_t *gl)
  
  - (void)presentRenderbuffer
  {
@@ -362,7 +364,7 @@ index 957b312f45..7ff80c766d 100644
  }
  
  - (void)layoutSubviews
-@@ -756,20 +784,20 @@ static void GLESSwap(vlc_gl_t *gl)
+@@ -756,20 +786,20 @@ static void GLESSwap(vlc_gl_t *gl)
                          waitUntilDone:NO];
  }
  
@@ -388,7 +390,7 @@ index 957b312f45..7ff80c766d 100644
  }
  
  - (void)applicationStateChanged:(NSNotification *)notification
-@@ -782,21 +810,21 @@ static void GLESSwap(vlc_gl_t *gl)
+@@ -782,21 +812,21 @@ static void GLESSwap(vlc_gl_t *gl)
      {
          _appActive = NO;
  
