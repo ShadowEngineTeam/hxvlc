@@ -72,6 +72,8 @@ download_vlc()
 
 		cd vlc
 
+		mv ../project/vlc/scripts/patches/iOS/include .
+
 		git checkout -B localBranch ${TESTEDHASH}
 		git branch --set-upstream-to=3.0.x localBranch
 
