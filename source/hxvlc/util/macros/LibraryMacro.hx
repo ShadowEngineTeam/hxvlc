@@ -21,7 +21,7 @@ class LibraryMacro
             Context.error("Couldn't find a value for `HXVLC_EXPORT_DIR` haxe define. Please set it to your export directory.", Context.currentPos());
 
         final exportDirectory:String = Context.getDefines().get("HXVLC_EXPORT_DIR") + "/windows/bin";
-        final arch:String = #if (HXCPP_M64 && !HXCPP_ARM64) "64" #elseif (HXCPP_ARM64 && !HXCPP_M64) "Arm64" #else "" #end;
+        final arch:String = #if (HXCPP_M64 && !HXCPP_ARM64) "64" #elseif HXCPP_ARM64 "Arm64" #else "" #end;
         final projectDir:String = getProjectDirectory();
         final libvlcPath:String = Path.join([projectDir, "project/vlc/lib/Windows" + arch, "libvlc.dll"]);
         final libvlccorePath:String = Path.join([projectDir, "project/vlc/lib/Windows" + arch, "libvlccore.dll"]);

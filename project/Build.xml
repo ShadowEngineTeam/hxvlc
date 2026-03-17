@@ -25,7 +25,7 @@
 				<lib name="${PROJECT_DIR}/lib/Windows64/libvlccore.lib" />
 			</section>
 
-			<section if="HXCPP_ARM64" unless="HXCPP_M64">
+			<section if="HXCPP_ARM64">
 				<lib name="${PROJECT_DIR}/lib/WindowsArm64/libvlc.lib" />
 				<lib name="${PROJECT_DIR}/lib/WindowsArm64/libvlccore.lib" />
 			</section>
