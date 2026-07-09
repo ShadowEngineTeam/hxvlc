@@ -2,17 +2,20 @@ package hxvlc.openfl.textures;
 
 import lime.utils.UInt8Array;
 
-import openfl.display.BitmapData;
 import openfl.display3D.Context3D;
 import openfl.display3D.textures.TextureBase;
 
 /**
  * This class is a video texture that extends TextureBase for efficient video frame rendering.
- * 
+ *
+ * Frames are uploaded straight into a BGFX texture (lime's renderer); libVLC
+ * is configured for RV32 output, which is BGRA on little-endian and matches
+ * TextureBase's default BGFX format.
+ *
  * @see https://github.com/openfl/openfl/blob/develop/src/openfl/display3D/textures/RectangleTexture.hx
- * @see https://github.com/openfl/openfl/blob/3f24568a1dec5d971e167836ea84846607a86e9c/lib/draft-api/src/openfl/media/_internal/NativeVideoBackend.cpp#L500
  */
 @:access(openfl.display3D.Context3D)
+@:access(openfl.display3D.textures.TextureBase)
 class VideoTexture extends TextureBase
 {
 	@:noCompletion
@@ -20,7 +23,7 @@ class VideoTexture extends TextureBase
 
 	/**
 	 * Initializes a VideoTexture object.
-	 * 
+	 *
 	 * @param context The context to use for texture operations.
 	 * @param width The width dimension to allocate for the texture.
 	 * @param height The height dimension to allocate for the texture.
@@ -32,78 +35,26 @@ class VideoTexture extends TextureBase
 
 		__width = width;
 		__height = height;
-		__textureTarget = __context.gl.TEXTURE_2D;
 		__frameSize = width * height * 4;
 
-		@:nullSafety(Off)
-		{
-			__context.__bindGLTexture2D(__textureID);
+		__ensureBGFXTexture();
 
-			__context.gl.texImage2D(__textureTarget, 0, __internalFormat, __width, __height, 0, __format, __context.gl.UNSIGNED_BYTE, data);
-
-			__context.__bindGLTexture2D(null);
-		}
-
-		__getGLFramebuffer(false, 0, 0);
+		if (data != null)
+			uploadFromTypedArray(data);
 	}
 
 	/**
 	 * Updates the texture content with new data from a typed array.
-	 * 
+	 *
 	 * This method is typically used for uploading new video frames efficiently.
-	 * 
+	 *
 	 * @param data The new pixel data.
 	 */
 	public function uploadFromTypedArray(data:UInt8Array):Void
 	{
-		if (data.length != __frameSize)
+		if (data == null || data.length != __frameSize || __bgfxTexture == -1)
 			return;
 
-		@:nullSafety(Off)
-		{
-			__context.__bindGLTexture2D(__textureID);
-
-			__context.gl.texSubImage2D(__textureTarget, 0, 0, 0, __width, __height, __format, __context.gl.UNSIGNED_BYTE, data);
-
-			__context.__bindGLTexture2D(null);
-		}
-	}
-
-	@:noCompletion
-	private override function __setSamplerState(state:openfl.display._internal.SamplerState):Bool
-	{
-		if (super.__setSamplerState(state))
-		{
-			if (Context3D.__glMaxTextureMaxAnisotropy != 0)
-			{
-				var aniso:Int = -1;
-
-				if (state != null && state.filter != null)
-				{
-					switch (state.filter)
-					{
-						case ANISOTROPIC2X:
-							aniso = 2;
-						case ANISOTROPIC4X:
-							aniso = 4;
-						case ANISOTROPIC8X:
-							aniso = 8;
-						case ANISOTROPIC16X:
-							aniso = 16;
-						default:
-							aniso = 1;
-					}
-				}
-
-				if (aniso > Context3D.__glMaxTextureMaxAnisotropy)
-					aniso = Context3D.__glMaxTextureMaxAnisotropy;
-
-				__context.gl.texParameterf(__context.gl.TEXTURE_2D, Context3D.__glTextureMaxAnisotropy, aniso);
-			}
-
-			return true;
-		}
-
-		return false;
+		lime.graphics.bgfx.BGFX.updateTexture2D(__bgfxTexture, 0, 0, 0, 0, __width, __height, data);
 	}
 }
