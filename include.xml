@@ -28,6 +28,7 @@
 		<dependency name="Security.framework" />
 		<dependency name="VideoToolbox.framework" />
 		<dependency name="CoreImage.framework" />
+		<dependency name="OpenGLES.framework" />
 
 		<dependency name="libiconv.tbd" />
 	</section>
