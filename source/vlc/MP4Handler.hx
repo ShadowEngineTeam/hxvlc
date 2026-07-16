@@ -72,7 +72,7 @@ class MP4Handler extends HxvlcVideo
 		if (FlxG.sound.muted || FlxG.sound.volume <= 0)
 			volume = 0;
 		else
-			volume = Std.int(FlxG.sound.volume * 100);
+			volume = FlxG.sound.volume;
 		#end
 	}
 

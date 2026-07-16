@@ -18,7 +18,7 @@ class FlxVideo extends HxvlcVideo
 		onOpening.add(function()
 		{
 			#if FLX_SOUND_SYSTEM
-			volume = Std.int((FlxG.sound.muted ? 0 : 1) * FlxG.sound.volume * 100);
+			volume = (FlxG.sound.muted ? 0 : 1) * FlxG.sound.volume;
 			#end
 		});
 

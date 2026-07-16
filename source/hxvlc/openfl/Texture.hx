@@ -1,32 +1,26 @@
-package hxvlc.openfl.textures;
+package hxvlc.openfl;
 
+#if openfl
 import lime.utils.UInt8Array;
 
-import openfl.display.BitmapData;
 import openfl.display3D.Context3D;
 import openfl.display3D.textures.TextureBase;
 
-/**
- * This class is a video texture that extends TextureBase for efficient video frame rendering.
- * 
- * @see https://github.com/openfl/openfl/blob/develop/src/openfl/display3D/textures/RectangleTexture.hx
- * @see https://github.com/openfl/openfl/blob/3f24568a1dec5d971e167836ea84846607a86e9c/lib/draft-api/src/openfl/media/_internal/NativeVideoBackend.cpp#L500
- */
+/** This class is a texture that extends TextureBase for efficient video frame rendering. */
 @:access(openfl.display3D.Context3D)
-class VideoTexture extends TextureBase
+class Texture extends TextureBase
 {
 	@:noCompletion
 	private var __frameSize:Int = 0;
 
 	/**
-	 * Initializes a VideoTexture object.
+	 * Initializes a Texture object.
 	 * 
 	 * @param context The context to use for texture operations.
 	 * @param width The width dimension to allocate for the texture.
 	 * @param height The height dimension to allocate for the texture.
-	 * @param data The pixel data to initializes the texture with.
 	 */
-	public function new(context:Context3D, width:Int, height:Int, ?data:UInt8Array):Void
+	public function new(context:Context3D, width:Int, height:Int):Void
 	{
 		super(context);
 
@@ -39,7 +33,7 @@ class VideoTexture extends TextureBase
 		{
 			__context.__bindGLTexture2D(__textureID);
 
-			__context.gl.texImage2D(__textureTarget, 0, __internalFormat, __width, __height, 0, __format, __context.gl.UNSIGNED_BYTE, data);
+			__context.gl.texImage2D(__textureTarget, 0, __internalFormat, __width, __height, 0, __format, __context.gl.UNSIGNED_BYTE, new UInt8Array(__frameSize));
 
 			__context.__bindGLTexture2D(null);
 		}
@@ -49,8 +43,6 @@ class VideoTexture extends TextureBase
 
 	/**
 	 * Updates the texture content with new data from a typed array.
-	 * 
-	 * This method is typically used for uploading new video frames efficiently.
 	 * 
 	 * @param data The new pixel data.
 	 */
@@ -107,3 +99,4 @@ class VideoTexture extends TextureBase
 		return false;
 	}
 }
+#end

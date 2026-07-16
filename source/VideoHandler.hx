@@ -59,7 +59,7 @@ class VideoHandler extends HxvlcVideo
 	private function onVLCOpening():Void
 	{
 		#if FLX_SOUND_SYSTEM
-		volume = Std.int(((FlxG.sound.muted || !canUseSound) ? 0 : 1) * FlxG.sound.volume * 100);
+		volume = ((FlxG.sound.muted || !canUseSound) ? 0 : 1) * FlxG.sound.volume;
 		#end
 
 		if (openingCallback != null)
@@ -156,7 +156,7 @@ class VideoHandler extends HxvlcVideo
 		}
 
 		#if FLX_SOUND_SYSTEM
-		volume = Std.int(((FlxG.sound.muted || !canUseSound) ? 0 : 1) * FlxG.sound.volume * 100);
+		volume = ((FlxG.sound.muted || !canUseSound) ? 0 : 1) * FlxG.sound.volume;
 		#end
 	}
 
