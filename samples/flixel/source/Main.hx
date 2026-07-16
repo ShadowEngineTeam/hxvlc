@@ -37,7 +37,7 @@ class Main extends Sprite
 		FlxSprite.defaultAntialiasing = true;
 
 		#if run_uncapped
-		#if lime_funkin
+		#if lime_shadow
 		final framerate:Int = 0;
 		#else
 		final framerate:Int = 999;

@@ -18,7 +18,7 @@ class Main extends Sprite
 		super();
 
 		#if run_uncapped
-		#if lime_funkin
+		#if lime_shadow
 		stage.window.frameRate = 0;
 		#else
 		stage.window.frameRate = 999;
