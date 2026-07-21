@@ -25,9 +25,6 @@ class FlxVideo extends HxvlcVideo
 		FlxG.addChildBelowMouse(this);
 	}
 
-	public function play(location:String, shouldLoop:Bool = false):Bool
-		return playMP4(location, shouldLoop);
-
 	public function playMP4(location:String, shouldLoop:Bool = false):Bool
 	{
 		_shouldLoop = shouldLoop;
