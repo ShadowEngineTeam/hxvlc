@@ -68,7 +68,7 @@ class Texture extends TextureBase
 		{
 			if (Context3D.__glMaxTextureMaxAnisotropy != 0)
 			{
-				var aniso:Int = -1;
+				var aniso:Float = -1;
 
 				if (state != null && state.filter != null)
 				{
