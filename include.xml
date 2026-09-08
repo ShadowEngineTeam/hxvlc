@@ -5,7 +5,21 @@
 	xsi:schemaLocation="http://lime.openfl.org/project/1.0.4 http://lime.openfl.org/xsd/project-1.0.4.xsd">
 
 	<section if="windows">
-		<haxeflag name="--macro" value="hxvlc.util.macros.LibraryMacro.copyLibraries()" />
+		<section if="x86_64">
+			<assets path="project/vlc/lib/Windows64" rename="" include="*.dll" library="libvlc" />
+			<assets path="project/vlc/plugins/Windows64" rename="plugins" include="*.dll" library="libvlc" />
+			<!-- <assets path="project/vlc/plugins/Windows64/plugins.dat" rename="plugins/plugins.dat" library="libvlc" /> -->
+		</section>
+		<section if="arm64">
+			<assets path="project/vlc/lib/WindowsArm64" rename="" include="*.dll" library="libvlc" />
+			<assets path="project/vlc/plugins/WindowsArm64" rename="plugins" include="*.dll" library="libvlc" />
+			<!-- <assets path="project/vlc/plugins/WindowsArm64/plugins.dat" rename="plugins/plugins.dat" library="libvlc" /> -->
+		</section>
+		<section unless="x86_64 || arm64">
+			<assets path="project/vlc/lib/Windows" rename="" include="*.dll" library="libvlc" />
+			<assets path="project/vlc/plugins/Windows" rename="plugins" include="*.dll" library="libvlc" />
+				<!-- <assets path="project/vlc/plugins/Windows/plugins.dat" rename="plugins/plugins.dat" library="libvlc" /> -->
+		</section>
 	</section>
 
 	<section if="mac">
