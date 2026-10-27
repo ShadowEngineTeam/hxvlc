@@ -38,7 +38,8 @@ import lime.media.openal.AL;
 import lime.media.openal.ALBuffer;
 import lime.media.openal.ALSource;
 #elseif lime_miniaudio
-import cpp.NativeArray;
+import cpp.Pointer;
+import cpp.RawPointer;
 
 import lime.media.AudioManager;
 import lime.media.miniaudio.MAAudioRingBuffer;
@@ -48,7 +49,6 @@ import lime.media.miniaudio.MASoundConfig;
 #end
 
 /** This class is a video player that uses LibVLC for seamless integration with OpenFL display objects. */
-@:access(hxvlc.impl.output.AudioOutput)
 @:access(openfl.display3D.textures.TextureBase)
 @:access(openfl.display.BitmapData)
 class Video extends Bitmap
@@ -207,22 +207,13 @@ class Video extends Bitmap
 	private var alFrameSize:Null<Int>;
 	#elseif lime_miniaudio
 	@:noCompletion
-	private var maRingBuffer:Null<MAAudioRingBuffer>;
+	private var maAudioRingBuffer:Null<MAAudioRingBuffer>;
 
 	@:noCompletion
 	private var maSound:Null<MASound>;
 
 	@:noCompletion
-	private var maSampleRate:Null<Int>;
-
-	@:noCompletion
-	private var maChannels:Null<Int>;
-
-	@:noCompletion
-	private var maSamples:Null<BytesData>;
-
-	@:noCompletion
-	private var maVolume:Float = 1;
+	private var maSoundInitialGain:Float = 1;
 	#end
 
 	/**
@@ -558,7 +549,20 @@ class Video extends Bitmap
 
 		alQueuedBuffers = null;
 		#elseif lime_miniaudio
-		destroyMiniAudio();
+		if (maAudioRingBuffer != null)
+		{
+			maAudioRingBuffer.uninit();
+			maAudioRingBuffer = null;
+		}
+
+		if (maSound != null)
+		{
+			maSound.stop();
+			maSound.uninit();
+			maSound = null;
+		}
+
+		maSoundInitialGain = 0;
 		#end
 	}
 
@@ -634,7 +638,7 @@ class Video extends Bitmap
 		#if lime_openal
 		return alSource != null ? AL.getSourcef(alSource, AL.GAIN) : 1;
 		#elseif lime_miniaudio
-		return maVolume;
+		return maSound != null ? maSound.get_volume() : maSoundInitialGain;
 		#else
 		return 1;
 		#end
@@ -649,14 +653,16 @@ class Video extends Bitmap
 			AL.sourcef(alSource, AL.GAIN, value);
 		}
 		#elseif lime_miniaudio
-		maVolume = value;
-
-		audioOutput?.mutex.acquire();
-
 		if (maSound != null)
+		{
 			maSound.set_volume(value);
-
-		audioOutput?.mutex.release();
+		}
+		else
+		{
+			// In case `ma_sound` has not yet been initialized,
+			// we'll just set the volume to variable and then set it to the `ma_sound` instance when initialized.
+			maSoundInitialGain = value;
+		}
 		#end
 
 		return value;
@@ -881,7 +887,7 @@ class Video extends Bitmap
 	@:noCompletion
 	private function audioOutput_onMapChannels(channels:Int):Int
 	{
-		#if (lime_openal || lime_miniaudio)
+		#if lime_openal
 		return channels == 1 ? 1 : 2;
 		#else
 		return channels;
@@ -912,12 +918,26 @@ class Video extends Bitmap
 
 		return true;
 		#elseif lime_miniaudio
-		destroyMiniAudio();
+		maAudioRingBuffer = MAAudioRingBuffer.init(MAAudioRingBufferConfig.init(F32, channels, rate, rate * 2));
 
-		maSampleRate = rate;
-		maChannels = channels;
+		if (maAudioRingBuffer != null)
+		{
+			final config:MASoundConfig = MASoundConfig.init();
 
-		return AudioManager.engine != null;
+			config.flags = MASound.FLAG_NO_SPATIALIZATION;
+			config.pDataSource = maAudioRingBuffer;
+
+			maSound = MASound.init(AudioManager.engine, config);
+
+			if (maSound != null)
+			{
+				maSound.set_volume(maSoundInitialGain);
+
+				return true;
+			}
+		}
+
+		return false;
 		#else
 		return false;
 		#end
@@ -960,41 +980,14 @@ class Video extends Bitmap
 			}
 		}
 		#elseif lime_miniaudio
-		if (samples == null || maChannels == null || maSampleRate == null)
-			return;
-
-		if (maRingBuffer == null)
+		if (maAudioRingBuffer != null && maSound != null)
 		{
-			// two seconds of headroom, VLC feeds audio in real time
-			maRingBuffer = MAAudioRingBuffer.init(MAAudioRingBufferConfig.init(F32, maChannels, maSampleRate, maSampleRate * 2));
+			maAudioRingBuffer.write_pcm_frames(Pointer.ofArray(samples), samples.length);
 
-			if (maRingBuffer == null)
-				return;
-		}
-
-		final frameCount:Int = samples.length;
-
-		// VLC hands over `frameCount` frames of FL32, but the array length is the frame count
-		maSamples ??= new BytesData();
-
-		NativeArray.setUnmanagedData(maSamples, NativeArray.address(samples, 0), frameCount * maChannels * 4);
-
-		maRingBuffer.write_pcm_frames_from_bytes(Bytes.ofData(maSamples), 0, frameCount);
-
-		if (maSound == null)
-		{
-			final config:MASoundConfig = MASoundConfig.init();
-
-			config.flags = MASound.FLAG_NO_SPATIALIZATION;
-			config.pDataSource = maRingBuffer;
-
-			maSound = MASound.init(AudioManager.engine, config);
-
-			if (maSound == null)
-				return;
-
-			maSound.set_volume(maVolume);
-			maSound.start();
+			if (maSound != null && !maSound.is_playing())
+			{
+				maSound.start();
+			}
 		}
 		#end
 	}
@@ -1008,8 +1001,10 @@ class Video extends Bitmap
 			AL.sourcePause(alSource);
 		}
 		#elseif lime_miniaudio
-		if (maSound != null)
+		if (maSound != null && maSound.is_playing())
+		{
 			maSound.stop();
+		}
 		#end
 	}
 
@@ -1022,8 +1017,10 @@ class Video extends Bitmap
 			AL.sourcePlay(alSource);
 		}
 		#elseif lime_miniaudio
-		if (maSound != null)
+		if (maSound != null && !maSound.is_playing())
+		{
 			maSound.start();
+		}
 		#end
 	}
 
@@ -1036,34 +1033,27 @@ class Video extends Bitmap
 			AL.sourceStop(alSource);
 		}
 		#elseif lime_miniaudio
-		// drop whatever is still buffered, the next onPlay recreates the sound
-		destroyMiniAudio(false);
+		if (maSound != null && maSound.is_playing())
+			maSound.stop();
+
+		if (maAudioRingBuffer != null)
+		{
+			// When we are changing the time of the LibVLC media player this function is called,
+			// if we dont drain the audio frames currently present,
+			// the audio will start to become glitchy.
+			final frameCount:Int = maAudioRingBuffer.get_length_in_pcm_frames();
+
+			if (frameCount > 0)
+			{
+				final mappedBuffer:RawPointer<cpp.Void> = untyped NULL;
+
+				final mappedFrameCount:Int = maAudioRingBuffer.map_consume(frameCount, Pointer.fromRaw(RawPointer.addressOf(mappedBuffer)));
+
+				if (mappedFrameCount > 0)
+					maAudioRingBuffer.unmap_consume(mappedFrameCount);
+			}
+		}
 		#end
 	}
-
-	#if lime_miniaudio
-	@:noCompletion
-	private function destroyMiniAudio(resetFormat:Bool = true):Void
-	{
-		if (maSound != null)
-		{
-			maSound.stop();
-			maSound.uninit();
-			maSound = null;
-		}
-
-		if (maRingBuffer != null)
-		{
-			maRingBuffer.uninit();
-			maRingBuffer = null;
-		}
-
-		if (resetFormat)
-		{
-			maSampleRate = null;
-			maChannels = null;
-		}
-	}
-	#end
 }
 #end
