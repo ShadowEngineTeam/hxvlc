@@ -37,9 +37,18 @@ import cpp.Stdlib;
 import lime.media.openal.AL;
 import lime.media.openal.ALBuffer;
 import lime.media.openal.ALSource;
+#elseif lime_miniaudio
+import cpp.NativeArray;
+
+import lime.media.AudioManager;
+import lime.media.miniaudio.MAAudioRingBuffer;
+import lime.media.miniaudio.MAAudioRingBufferConfig;
+import lime.media.miniaudio.MASound;
+import lime.media.miniaudio.MASoundConfig;
 #end
 
 /** This class is a video player that uses LibVLC for seamless integration with OpenFL display objects. */
+@:access(hxvlc.impl.output.AudioOutput)
 @:access(openfl.display3D.textures.TextureBase)
 @:access(openfl.display.BitmapData)
 class Video extends Bitmap
@@ -196,6 +205,24 @@ class Video extends Bitmap
 
 	@:noCompletion
 	private var alFrameSize:Null<Int>;
+	#elseif lime_miniaudio
+	@:noCompletion
+	private var maRingBuffer:Null<MAAudioRingBuffer>;
+
+	@:noCompletion
+	private var maSound:Null<MASound>;
+
+	@:noCompletion
+	private var maSampleRate:Null<Int>;
+
+	@:noCompletion
+	private var maChannels:Null<Int>;
+
+	@:noCompletion
+	private var maSamples:Null<BytesData>;
+
+	@:noCompletion
+	private var maVolume:Float = 1;
 	#end
 
 	/**
@@ -530,6 +557,8 @@ class Video extends Bitmap
 		}
 
 		alQueuedBuffers = null;
+		#elseif lime_miniaudio
+		destroyMiniAudio();
 		#end
 	}
 
@@ -604,6 +633,8 @@ class Video extends Bitmap
 	{
 		#if lime_openal
 		return alSource != null ? AL.getSourcef(alSource, AL.GAIN) : 1;
+		#elseif lime_miniaudio
+		return maVolume;
 		#else
 		return 1;
 		#end
@@ -617,6 +648,15 @@ class Video extends Bitmap
 		{
 			AL.sourcef(alSource, AL.GAIN, value);
 		}
+		#elseif lime_miniaudio
+		maVolume = value;
+
+		audioOutput?.mutex.acquire();
+
+		if (maSound != null)
+			maSound.set_volume(value);
+
+		audioOutput?.mutex.release();
 		#end
 
 		return value;
@@ -831,6 +871,8 @@ class Video extends Bitmap
 	{
 		#if lime_openal
 		return 'S16N';
+		#elseif lime_miniaudio
+		return 'FL32';
 		#else
 		return format;
 		#end
@@ -839,7 +881,7 @@ class Video extends Bitmap
 	@:noCompletion
 	private function audioOutput_onMapChannels(channels:Int):Int
 	{
-		#if lime_openal
+		#if (lime_openal || lime_miniaudio)
 		return channels == 1 ? 1 : 2;
 		#else
 		return channels;
@@ -869,6 +911,13 @@ class Video extends Bitmap
 		alFrameSize = Stdlib.sizeof(cpp.Int16) * channels;
 
 		return true;
+		#elseif lime_miniaudio
+		destroyMiniAudio();
+
+		maSampleRate = rate;
+		maChannels = channels;
+
+		return AudioManager.engine != null;
 		#else
 		return false;
 		#end
@@ -910,6 +959,43 @@ class Video extends Bitmap
 					AL.sourcePlay(alSource);
 			}
 		}
+		#elseif lime_miniaudio
+		if (samples == null || maChannels == null || maSampleRate == null)
+			return;
+
+		if (maRingBuffer == null)
+		{
+			// two seconds of headroom, VLC feeds audio in real time
+			maRingBuffer = MAAudioRingBuffer.init(MAAudioRingBufferConfig.init(F32, maChannels, maSampleRate, maSampleRate * 2));
+
+			if (maRingBuffer == null)
+				return;
+		}
+
+		final frameCount:Int = samples.length;
+
+		// VLC hands over `frameCount` frames of FL32, but the array length is the frame count
+		maSamples ??= new BytesData();
+
+		NativeArray.setUnmanagedData(maSamples, NativeArray.address(samples, 0), frameCount * maChannels * 4);
+
+		maRingBuffer.write_pcm_frames_from_bytes(Bytes.ofData(maSamples), 0, frameCount);
+
+		if (maSound == null)
+		{
+			final config:MASoundConfig = MASoundConfig.init();
+
+			config.flags = MASound.FLAG_NO_SPATIALIZATION;
+			config.pDataSource = maRingBuffer;
+
+			maSound = MASound.init(AudioManager.engine, config);
+
+			if (maSound == null)
+				return;
+
+			maSound.set_volume(maVolume);
+			maSound.start();
+		}
 		#end
 	}
 
@@ -921,6 +1007,9 @@ class Video extends Bitmap
 		{
 			AL.sourcePause(alSource);
 		}
+		#elseif lime_miniaudio
+		if (maSound != null)
+			maSound.stop();
 		#end
 	}
 
@@ -932,6 +1021,9 @@ class Video extends Bitmap
 		{
 			AL.sourcePlay(alSource);
 		}
+		#elseif lime_miniaudio
+		if (maSound != null)
+			maSound.start();
 		#end
 	}
 
@@ -943,7 +1035,35 @@ class Video extends Bitmap
 		{
 			AL.sourceStop(alSource);
 		}
+		#elseif lime_miniaudio
+		// drop whatever is still buffered, the next onPlay recreates the sound
+		destroyMiniAudio(false);
 		#end
 	}
+
+	#if lime_miniaudio
+	@:noCompletion
+	private function destroyMiniAudio(resetFormat:Bool = true):Void
+	{
+		if (maSound != null)
+		{
+			maSound.stop();
+			maSound.uninit();
+			maSound = null;
+		}
+
+		if (maRingBuffer != null)
+		{
+			maRingBuffer.uninit();
+			maRingBuffer = null;
+		}
+
+		if (resetFormat)
+		{
+			maSampleRate = null;
+			maChannels = null;
+		}
+	}
+	#end
 }
 #end
