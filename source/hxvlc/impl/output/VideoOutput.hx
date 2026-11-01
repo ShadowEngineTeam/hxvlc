@@ -215,13 +215,16 @@ private class VideoOutputCallbacks
 			videoOutput.planePitches = [];
 			videoOutput.planeLines = [];
 
+			final frameWidth:Int = width[0];
+			final frameHeight:Int = height[0];
+
 			if (isPlanar420(videoOutput.chroma))
 			{
-				final chromaWidth:Int = (videoOutput.width + 1) >> 1;
-				final chromaHeight:Int = (videoOutput.height + 1) >> 1;
+				final chromaWidth:Int = (frameWidth + 1) >> 1;
+				final chromaHeight:Int = (frameHeight + 1) >> 1;
 
-				videoOutput.planePitches.push(align(videoOutput.width * videoOutput.bytesPerPixel, PITCH_ALIGNMENT));
-				videoOutput.planeLines.push(videoOutput.height);
+				videoOutput.planePitches.push(align(frameWidth * videoOutput.bytesPerPixel, PITCH_ALIGNMENT));
+				videoOutput.planeLines.push(frameHeight);
 
 				for (_ in 0...2)
 				{
@@ -231,8 +234,8 @@ private class VideoOutputCallbacks
 			}
 			else
 			{
-				videoOutput.planePitches.push(videoOutput.width * videoOutput.bytesPerPixel);
-				videoOutput.planeLines.push(videoOutput.height);
+				videoOutput.planePitches.push(frameWidth * videoOutput.bytesPerPixel);
+				videoOutput.planeLines.push(frameHeight);
 			}
 
 			var frameSize:Int = 0;

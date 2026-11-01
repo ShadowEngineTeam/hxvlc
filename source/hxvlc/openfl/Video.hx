@@ -833,14 +833,8 @@ class Video extends Bitmap
 		if (bitmapData != null)
 			bitmapData.dispose();
 
-		bitmapData = new BitmapData(0, 0, true, 0);
-
-		bitmapData.rect.setTo(0, 0, width, height);
-
-		bitmapData.__texture = new Texture(Lib.current.stage.context3D, width, height);
-		bitmapData.__textureContext = bitmapData.__texture.__textureContext;
-		bitmapData.__resize(width, height);
-		bitmapData.__isValid = true;
+		// An OpenFL render texture, so `BitmapData.draw` can size its viewport and convert the planes into it.
+		bitmapData = BitmapData.fromTexture(Lib.current.stage.context3D.createRectangleTexture(width, height, BGRA, true), false);
 
 		setupPlanes(width, height);
 
