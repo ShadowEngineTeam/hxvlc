@@ -19,10 +19,17 @@ class Texture extends TextureBase
 	 * @param context The context to use for texture operations.
 	 * @param width The width dimension to allocate for the texture.
 	 * @param height The height dimension to allocate for the texture.
+	 * @param singleChannel Whether to store one 8-bit channel per texel (R8) instead of four (BGRA).
 	 */
-	public function new(context:Context3D, width:Int, height:Int):Void
+	public function new(context:Context3D, width:Int, height:Int, singleChannel:Bool = false):Void
 	{
 		super(context);
+
+		if (singleChannel)
+		{
+			__internalFormat = __context.gl.R8;
+			__format = __context.gl.RED;
+		}
 
 		__width = width;
 
@@ -30,7 +37,7 @@ class Texture extends TextureBase
 
 		__textureTarget = __context.gl.TEXTURE_2D;
 
-		__frameSize = width * height * 4;
+		__frameSize = width * height * (singleChannel ? 1 : 4);
 
 		__context.__bindGLTexture2D(__textureID);
 
@@ -39,7 +46,8 @@ class Texture extends TextureBase
 		@:nullSafety(Off)
 		__context.__bindGLTexture2D(null);
 
-		__getGLFramebuffer(false, 0, 0);
+		if (!singleChannel)
+			__getGLFramebuffer(false, 0, 0);
 	}
 
 	/**
