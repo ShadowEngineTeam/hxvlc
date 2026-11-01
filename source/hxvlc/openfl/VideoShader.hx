@@ -8,8 +8,6 @@ import openfl.display.GraphicsShader;
  *
  * The luma plane is the bitmap being drawn, the chroma planes are bound to `uPlane` and `vPlane`
  * and sampled with bilinear filtering, so chroma is properly interpolated up to the luma resolution.
- *
- * Null safety is off because OpenFL's shader macro generates the uniform fields and fills them in `__initGL`.
  */
 @:nullSafety(Off)
 class VideoShader extends GraphicsShader
