@@ -192,17 +192,6 @@ class Video extends Bitmap
 	@:noCompletion
 	private var audioOutput:Null<AudioOutput>;
 
-	/** The Y, U and V planes of the current frame, each in a single channel texture. */
-	@:noCompletion
-	private var planeBitmapDatas:Array<BitmapData> = [];
-
-	/** Draws the luma plane through `videoShader` into `bitmapData`. */
-	@:noCompletion
-	private var planeBitmap:Null<Bitmap>;
-
-	@:noCompletion
-	private var videoShader:Null<VideoShader>;
-
 	#if lime_openal
 	#if lime_shadow
 	@:noCompletion
@@ -542,8 +531,6 @@ class Video extends Bitmap
 
 		bitmapData.dispose();
 
-		disposePlanes();
-
 		#if lime_openal
 		if (alSource != null)
 		{
@@ -785,10 +772,6 @@ class Video extends Bitmap
 	{
 		if (media != null)
 		{
-			// The decoder would otherwise decode straight into our single planar buffer and use it as a reference frame,
-			// which corrupts every frame that follows it.
-			media.addOption(':no-avcodec-dr');
-
 			if (options != null && options.length > 0)
 			{
 				for (option in options)
@@ -822,9 +805,7 @@ class Video extends Bitmap
 		// so rather than having a crash, it would be best to keep it using this,
 		// it isnt the end of the world tho since, even with async rendering, the performance woudnt change,
 		// we aint losing nothing ¯\(ツ)/¯
-		// Frames come out as planar 4:2:0 YUV and are converted to RGB on the GPU (see `VideoShader`),
-		// so chroma gets bilinear upsampling and the CPU does no colour conversion at all.
-		videoOutput = new VideoOutput(mediaPlayer, "I420", 1);
+		videoOutput = new VideoOutput(mediaPlayer, "RV32", 4);
 		videoOutput.onFormatSetup = (width:Int, height:Int) -> MainLoop.runInMainThread(() -> videoOutput_onSetup(width, height));
 		videoOutput.onDisplay = (pixels:BytesData) -> MainLoop.runInMainThread(() -> videoOutput_onDisplay(pixels));
 	}
@@ -841,10 +822,14 @@ class Video extends Bitmap
 		if (bitmapData != null)
 			bitmapData.dispose();
 
-		// An OpenFL render texture, so `BitmapData.draw` can size its viewport and convert the planes into it.
-		bitmapData = BitmapData.fromTexture(Lib.current.stage.context3D.createRectangleTexture(width, height, BGRA, true), false);
+		bitmapData = new BitmapData(0, 0, true, 0);
 
-		setupPlanes(width, height);
+		bitmapData.rect.setTo(0, 0, width, height);
+
+		bitmapData.__texture = new Texture(Lib.current.stage.context3D, width, height);
+		bitmapData.__textureContext = bitmapData.__texture.__textureContext;
+		bitmapData.__resize(width, height);
+		bitmapData.__isValid = true;
 
 		onFormatSetup.dispatch();
 
@@ -852,67 +837,12 @@ class Video extends Bitmap
 	}
 
 	@:noCompletion
-	private function setupPlanes(width:Int, height:Int):Void
-	{
-		disposePlanes();
-
-		final output:Null<VideoOutput> = videoOutput;
-
-		if (output == null || output.planePitches.length != 3)
-			return;
-
-		for (i in 0...3)
-		{
-			final texture:Texture = new Texture(Lib.current.stage.context3D, output.planePitches[i], output.planeLines[i], true);
-
-			planeBitmapDatas.push(BitmapData.fromTexture(texture, false));
-		}
-
-		final shader:VideoShader = videoShader ?? new VideoShader();
-
-		shader.uPlane.input = planeBitmapDatas[1];
-		shader.uPlane.filter = LINEAR;
-		shader.vPlane.input = planeBitmapDatas[2];
-		shader.vPlane.filter = LINEAR;
-		shader.setLayout(output.planePitches[0], output.planeLines[0], (width + 1) >> 1, (height + 1) >> 1, output.planePitches[1], output.planeLines[1],
-			height);
-
-		final bitmap:Bitmap = new Bitmap(planeBitmapDatas[0], NEVER, false);
-		bitmap.shader = shader;
-
-		videoShader = shader;
-		planeBitmap = bitmap;
-	}
-
-	@:noCompletion
-	private function disposePlanes():Void
-	{
-		for (planeBitmapData in planeBitmapDatas)
-			planeBitmapData.dispose();
-
-		planeBitmapDatas = [];
-
-		planeBitmap = null;
-	}
-
-	@:noCompletion
 	private function videoOutput_onDisplay(pixels:BytesData):Void
 	{
-		final output:Null<VideoOutput> = videoOutput;
-		final bitmap:Null<Bitmap> = planeBitmap;
-
-		if (bitmapData == null || bitmapData.__texture == null || output == null || bitmap == null)
+		if (bitmapData == null || bitmapData.__texture == null)
 			return;
 
-		final bytes:Bytes = Bytes.ofData(pixels);
-
-		for (i in 0...planeBitmapDatas.length)
-		{
-			cast(planeBitmapDatas[i].__texture, Texture).uploadFromTypedArray(UInt8Array.fromBytes(bytes, output.planeOffsets[i],
-				output.planePitches[i] * output.planeLines[i]));
-		}
-
-		bitmapData.draw(bitmap);
+		cast(bitmapData.__texture, Texture).uploadFromTypedArray(UInt8Array.fromBytes(Bytes.ofData(pixels)));
 
 		__setRenderDirty();
 	}

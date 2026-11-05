@@ -35,15 +35,6 @@ class VideoOutput
 	@:noCompletion
 	private var pixels:Null<BytesData>;
 
-	/** Byte offset of each plane inside the frame buffer. */
-	public var planeOffsets(default, null):Array<Int> = [];
-
-	/** Row size in bytes of each plane, padded for alignment. */
-	public var planePitches(default, null):Array<Int> = [];
-
-	/** Row count of each plane. */
-	public var planeLines(default, null):Array<Int> = [];
-
 	@:noCompletion
 	private var outputWidth:Null<Int>;
 
@@ -67,8 +58,8 @@ class VideoOutput
 	 * @param mediaPlayer The media player to attach LibVLC video callbacks to.
 	 * @param width (Optional) Pixel width to force the LibVLC output to.
 	 * @param height (Optional) Pixel height to force the LibVLC output to.
-	 * @param chroma Pixel chroma string (e.g. "RV32", or "I420" for planar 4:2:0 YUV).
-	 * @param bytesPerPixel Number of bytes per pixel for the chosen chroma (bytes per luma sample for planar chromas).
+	 * @param chroma Pixel chroma string (e.g. "RV32").
+	 * @param bytesPerPixel Number of bytes per pixel for the chosen chroma.
 	 */
 	public function new(mediaPlayer:MediaPlayer, ?outputWidth:Int, ?outputHeight:Int, chroma:String, bytesPerPixel:Int):Void
 	{
@@ -111,12 +102,7 @@ private class VideoOutputCallbacks
 			videoOutput.mutex.acquire();
 
 			if (videoOutput.pixels != null)
-			{
-				final base:RawPointer<cpp.Void> = untyped NativeArray.getBase(videoOutput.pixels).getBase();
-
-				for (i in 0...videoOutput.planeOffsets.length)
-					p_pixels[i] = untyped __cpp__('(void *)((unsigned char *){0} + {1})', base, videoOutput.planeOffsets[i]);
-			}
+				p_pixels[0] = untyped NativeArray.getBase(videoOutput.pixels).getBase();
 
 			untyped __cpp__('hx::SetTopOfStack((int *)0, true)');
 		}
@@ -211,49 +197,13 @@ private class VideoOutputCallbacks
 			videoOutput.width = width[0];
 			videoOutput.height = height[0];
 
-			videoOutput.planeOffsets = [];
-			videoOutput.planePitches = [];
-			videoOutput.planeLines = [];
-
-			final frameWidth:Int = width[0];
-			final frameHeight:Int = height[0];
-
-			if (isPlanar420(videoOutput.chroma))
-			{
-				final chromaWidth:Int = (frameWidth + 1) >> 1;
-				final chromaHeight:Int = (frameHeight + 1) >> 1;
-
-				videoOutput.planePitches.push(align(frameWidth * videoOutput.bytesPerPixel, PITCH_ALIGNMENT));
-				videoOutput.planeLines.push(frameHeight);
-
-				for (_ in 0...2)
-				{
-					videoOutput.planePitches.push(align(chromaWidth * videoOutput.bytesPerPixel, PITCH_ALIGNMENT));
-					videoOutput.planeLines.push(chromaHeight);
-				}
-			}
-			else
-			{
-				videoOutput.planePitches.push(frameWidth * videoOutput.bytesPerPixel);
-				videoOutput.planeLines.push(frameHeight);
-			}
-
-			var frameSize:Int = 0;
-
-			for (i in 0...videoOutput.planePitches.length)
-			{
-				pitches[i] = videoOutput.planePitches[i];
-				lines[i] = videoOutput.planeLines[i];
-
-				videoOutput.planeOffsets.push(frameSize);
-
-				frameSize += videoOutput.planePitches[i] * videoOutput.planeLines[i];
-			}
+			pitches[0] = videoOutput.width * videoOutput.bytesPerPixel;
+			lines[0] = videoOutput.height;
 
 			if (videoOutput.pixels == null)
 				videoOutput.pixels = new BytesData();
 
-			NativeArray.setSize(videoOutput.pixels, frameSize);
+			NativeArray.setSize(videoOutput.pixels, videoOutput.width * videoOutput.height * videoOutput.bytesPerPixel);
 
 			videoOutput.onFormatSetup(videoOutput.width, videoOutput.height);
 
@@ -265,23 +215,6 @@ private class VideoOutputCallbacks
 		}
 
 		return 0;
-	}
-
-	/** Row alignment for planar output, so every plane can be uploaded without changing `GL_UNPACK_ALIGNMENT`. */
-	@:noCompletion
-	private static inline final PITCH_ALIGNMENT:Int = 32;
-
-	@:noCompletion
-	private static inline function align(value:Int, alignment:Int):Int
-	{
-		return (value + alignment - 1) & ~(alignment - 1);
-	}
-
-	/** Whether `chroma` is limited range, three plane (Y, U, V) 4:2:0 YUV. */
-	@:noCompletion
-	private static function isPlanar420(chroma:Null<String>):Bool
-	{
-		return chroma == "I420";
 	}
 
 	/**
