@@ -41,16 +41,19 @@ import lime.media.openal.ALSource;
 import cpp.Pointer;
 import cpp.RawPointer;
 
-import lime.media.AudioManager;
+import lime.media.AudioBuffer;
+import lime.media.AudioSource;
 import lime.media.miniaudio.MAAudioRingBuffer;
 import lime.media.miniaudio.MAAudioRingBufferConfig;
-import lime.media.miniaudio.MASound;
-import lime.media.miniaudio.MASoundConfig;
 #end
 
 /** This class is a video player that uses LibVLC for seamless integration with OpenFL display objects. */
+#if lime_miniaudio
+@:access(lime.media.AudioBuffer)
+#end
 @:access(openfl.display3D.textures.TextureBase)
 @:access(openfl.display.BitmapData)
+@:haxe.warning("-WDeprecated")
 class Video extends Bitmap
 {
 	/** The media resource locator (MRL). */
@@ -162,7 +165,14 @@ class Video extends Bitmap
 	public var onMediaSubItemTreeAdded(default, null):Event<Media->Void> = new Event<Media->Void>();
 
 	/** Event triggered when the media format setup is initialized. */
+	@:deprecated('onFormatSetup is deprecated, use onVideoFormatSetup instead')
 	public var onFormatSetup(default, null):Event<Void->Void> = new Event<Void->Void>();
+
+	/** Event triggered when the video format setup is initialized. */
+	public var onVideoFormatSetup(default, null):Event<Void->Void> = new Event<Void->Void>();
+
+	/** Event triggered when the audio format setup is initialized. */
+	public var onAudioFormatSetup(default, null):Event<Void->Void> = new Event<Void->Void>();
 
 	@:noCompletion
 	private var instance:Null<Instance>;
@@ -218,13 +228,10 @@ class Video extends Bitmap
 	private var alFrameSize:Null<Int>;
 	#elseif lime_miniaudio
 	@:noCompletion
-	private var maAudioRingBuffer:Null<MAAudioRingBuffer>;
+	private var audioSource:Null<AudioSource>;
 
 	@:noCompletion
-	private var maSound:Null<MASound>;
-
-	@:noCompletion
-	private var maSoundInitialGain:Float = 1;
+	private var audioSourceInitialGain:Float = 1;
 	#end
 
 	/**
@@ -562,20 +569,19 @@ class Video extends Bitmap
 
 		alQueuedBuffers = null;
 		#elseif lime_miniaudio
-		if (maAudioRingBuffer != null)
+		@:nullSafety(Off)
+		if (audioSource != null)
 		{
-			maAudioRingBuffer.uninit();
-			maAudioRingBuffer = null;
-		}
+			audioSource.dispose();
 
-		if (maSound != null)
-		{
-			maSound.stop();
-			maSound.uninit();
-			maSound = null;
-		}
+			if (audioSource.buffer != null)
+			{
+				audioSource.buffer.dispose();
+				audioSource.buffer = null;
+			}
 
-		maSoundInitialGain = 0;
+			audioSource = null;
+		}
 		#end
 	}
 
@@ -651,7 +657,7 @@ class Video extends Bitmap
 		#if lime_openal
 		return alSource != null ? AL.getSourcef(alSource, AL.GAIN) : 1;
 		#elseif lime_miniaudio
-		return maSound != null ? maSound.get_volume() : maSoundInitialGain;
+		return audioSource != null ? audioSource.gain : audioSourceInitialGain;
 		#else
 		return 1;
 		#end
@@ -666,15 +672,13 @@ class Video extends Bitmap
 			AL.sourcef(alSource, AL.GAIN, value);
 		}
 		#elseif lime_miniaudio
-		if (maSound != null)
+		if (audioSource != null)
 		{
-			maSound.set_volume(value);
+			audioSource.gain = value;
 		}
 		else
 		{
-			// In case `ma_sound` has not yet been initialized,
-			// we'll just set the volume to variable and then set it to the `ma_sound` instance when initialized.
-			maSoundInitialGain = value;
+			audioSourceInitialGain = value;
 		}
 		#end
 
@@ -839,6 +843,8 @@ class Video extends Bitmap
 		setupPlanes(width, height);
 
 		onFormatSetup.dispatch();
+
+		onVideoFormatSetup.dispatch();
 	}
 
 	@:noCompletion
@@ -984,23 +990,37 @@ class Video extends Bitmap
 
 		return true;
 		#elseif lime_miniaudio
-		maAudioRingBuffer = MAAudioRingBuffer.init(MAAudioRingBufferConfig.init(F32, channels, rate, rate * 2));
-
-		if (maAudioRingBuffer != null)
+		@:nullSafety(Off)
+		if (audioSource != null)
 		{
-			final config:MASoundConfig = MASoundConfig.init();
+			audioSource.dispose();
 
-			config.flags = MASound.FLAG_NO_SPATIALIZATION;
-			config.pDataSource = maAudioRingBuffer;
-
-			maSound = MASound.init(AudioManager.engine, config);
-
-			if (maSound != null)
+			if (audioSource.buffer != null)
 			{
-				maSound.set_volume(maSoundInitialGain);
-
-				return true;
+				audioSource.buffer.dispose();
+				audioSource.buffer = null;
 			}
+
+			audioSource = null;
+		}
+
+		final ringBufferConfig:MAAudioRingBufferConfig = MAAudioRingBufferConfig.init(F32, channels, rate, rate * 2);
+
+		final ringBuffer:MAAudioRingBuffer = MAAudioRingBuffer.init(ringBufferConfig);
+
+		if (ringBuffer != null)
+		{
+			audioSource = new AudioSource();
+
+			audioSource.buffer = createAudioBuffer(ringBuffer, ringBufferConfig);
+
+			audioSource.init();
+
+			audioSource.gain = audioSourceInitialGain;
+
+			onAudioFormatSetup.dispatch();
+
+			return true;
 		}
 
 		return false;
@@ -1008,6 +1028,24 @@ class Video extends Bitmap
 		return false;
 		#end
 	}
+
+	#if lime_miniaudio
+	@:noCompletion
+	private function createAudioBuffer(ringBuffer:MAAudioRingBuffer, ringBufferConfig:MAAudioRingBufferConfig):AudioBuffer
+	{
+		final audioBuffer:AudioBuffer = new AudioBuffer();
+
+		audioBuffer.frames = ringBuffer.get_length_in_pcm_frames();
+
+		audioBuffer.sampleRate = ringBufferConfig.sampleRate;
+		audioBuffer.channels = ringBufferConfig.channels;
+		audioBuffer.format = ringBufferConfig.format;
+
+		audioBuffer.__srcMAAudioRingBuffer = ringBuffer;
+
+		return audioBuffer;
+	}
+	#end
 
 	@:noCompletion
 	private function audioOutput_onPlay(samples:BytesData):Void
@@ -1046,13 +1084,13 @@ class Video extends Bitmap
 			}
 		}
 		#elseif lime_miniaudio
-		if (maAudioRingBuffer != null && maSound != null)
+		if (audioSource != null && audioSource.buffer?.__srcMAAudioRingBuffer != null)
 		{
-			maAudioRingBuffer.write_pcm_frames(Pointer.ofArray(samples), samples.length);
+			audioSource.buffer.__srcMAAudioRingBuffer.write_pcm_frames(Pointer.ofArray(samples), samples.length);
 
-			if (maSound != null && !maSound.is_playing())
+			if (audioSource != null && !audioSource.playing)
 			{
-				maSound.start();
+				audioSource.play();
 			}
 		}
 		#end
@@ -1067,9 +1105,9 @@ class Video extends Bitmap
 			AL.sourcePause(alSource);
 		}
 		#elseif lime_miniaudio
-		if (maSound != null && maSound.is_playing())
+		if (audioSource != null && audioSource.playing)
 		{
-			maSound.stop();
+			audioSource.pause();
 		}
 		#end
 	}
@@ -1083,9 +1121,9 @@ class Video extends Bitmap
 			AL.sourcePlay(alSource);
 		}
 		#elseif lime_miniaudio
-		if (maSound != null && !maSound.is_playing())
+		if (audioSource != null && !audioSource.playing)
 		{
-			maSound.start();
+			audioSource.play();
 		}
 		#end
 	}
@@ -1099,24 +1137,30 @@ class Video extends Bitmap
 			AL.sourceStop(alSource);
 		}
 		#elseif lime_miniaudio
-		if (maSound != null && maSound.is_playing())
-			maSound.stop();
-
-		if (maAudioRingBuffer != null)
+		if (audioSource != null)
 		{
-			// When we are changing the time of the LibVLC media player this function is called,
-			// if we dont drain the audio frames currently present,
-			// the audio will start to become glitchy.
-			final frameCount:Int = maAudioRingBuffer.get_length_in_pcm_frames();
-
-			if (frameCount > 0)
+			if (audioSource.playing)
 			{
-				final mappedBuffer:RawPointer<cpp.Void> = untyped NULL;
+				audioSource.pause();
+			}
 
-				final mappedFrameCount:Int = maAudioRingBuffer.map_consume(frameCount, Pointer.fromRaw(RawPointer.addressOf(mappedBuffer)));
+			if (audioSource.buffer?.__srcMAAudioRingBuffer != null)
+			{
+				// When we are changing the time of the LibVLC media player this function is called,
+				// if we dont drain the audio frames currently present,
+				// the audio will start to become glitchy.
+				final frameCount:Int = audioSource.buffer.__srcMAAudioRingBuffer.get_length_in_pcm_frames();
 
-				if (mappedFrameCount > 0)
-					maAudioRingBuffer.unmap_consume(mappedFrameCount);
+				if (frameCount > 0)
+				{
+					final mappedBuffer:RawPointer<cpp.Void> = untyped NULL;
+
+					final mappedFrameCount:Int = audioSource.buffer.__srcMAAudioRingBuffer.map_consume(frameCount,
+						Pointer.fromRaw(RawPointer.addressOf(mappedBuffer)));
+
+					if (mappedFrameCount > 0)
+						audioSource.buffer.__srcMAAudioRingBuffer.unmap_consume(mappedFrameCount);
+				}
 			}
 		}
 		#end
