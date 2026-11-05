@@ -831,9 +831,11 @@ class Video extends Bitmap
 		bitmapData.__resize(width, height);
 		bitmapData.__isValid = true;
 
-		onFormatSetup.dispatch();
-
+		// `onVideoFormatSetup` goes first: `FlxVideoSprite` loads the frame graphic there, and listeners still on the
+		// deprecated `onFormatSetup` (sizing the sprite, for example) expect that to have happened already.
 		onVideoFormatSetup.dispatch();
+
+		onFormatSetup.dispatch();
 	}
 
 	@:noCompletion
