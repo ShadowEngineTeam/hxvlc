@@ -785,6 +785,10 @@ class Video extends Bitmap
 	{
 		if (media != null)
 		{
+			// The decoder would otherwise decode straight into our single planar buffer and use it as a reference frame,
+			// which corrupts every frame that follows it.
+			media.addOption(':no-avcodec-dr');
+
 			if (options != null && options.length > 0)
 			{
 				for (option in options)
