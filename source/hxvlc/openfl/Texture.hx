@@ -6,7 +6,12 @@ import lime.utils.UInt8Array;
 import openfl.display3D.Context3D;
 import openfl.display3D.textures.TextureBase;
 
-/** This class is a texture that extends TextureBase for efficient video frame rendering. */
+/**
+ * This class is a texture that extends TextureBase for efficient video frame rendering.
+ *
+ * Lime can be built with both the OpenGL and the bgfx renderer, and picks one when the window is
+ * created, so the renderer is checked at run time wherever both are compiled in.
+ */
 @:access(openfl.display3D.Context3D)
 class Texture extends TextureBase
 {
@@ -28,13 +33,19 @@ class Texture extends TextureBase
 
 		__height = height;
 
-		#if (lime_opengl || lime_opengles)
-		__textureTarget = __context.gl.TEXTURE_2D;
-		#end
-
 		__frameSize = width * height * 4;
 
+		#if lime_bgfx
+		if (__context.isBGFX)
+		{
+			__textureID = __context.bgfx.createTexture2D(__width, __height, false, 1, __internalFormat, __context.bgfx.TEXTURE_RT, null);
+			return;
+		}
+		#end
+
 		#if (lime_opengl || lime_opengles)
+		__textureTarget = __context.gl.TEXTURE_2D;
+
 		__context.__bindGLTexture2D(__textureID);
 
 		__context.gl.texImage2D(__textureTarget, 0, __internalFormat, __width, __height, 0, __format, __context.gl.UNSIGNED_BYTE, new UInt8Array(__frameSize));
@@ -43,8 +54,6 @@ class Texture extends TextureBase
 		__context.__bindGLTexture2D(null);
 
 		__getFramebuffer(false, 0, 0);
-		#elseif lime_bgfx
-		__textureID = __context.bgfx.createTexture2D(__width, __height, false, 1, __internalFormat, __context.bgfx.TEXTURE_RT, null);
 		#end
 	}
 
@@ -58,6 +67,14 @@ class Texture extends TextureBase
 		if (data.length != __frameSize)
 			return;
 
+		#if lime_bgfx
+		if (__context.isBGFX)
+		{
+			__context.bgfx.updateTexture2D(__textureID, 0, 0, 0, 0, __width, __height, __context.bgfx.copy(data));
+			return;
+		}
+		#end
+
 		#if (lime_opengl || lime_opengles)
 		__context.__bindGLTexture2D(__textureID);
 
@@ -65,8 +82,6 @@ class Texture extends TextureBase
 
 		@:nullSafety(Off)
 		__context.__bindGLTexture2D(null);
-		#elseif lime_bgfx
-		__context.bgfx.updateTexture2D(__textureID, 0, 0, 0, 0, __width, __height, __context.bgfx.copy(data));
 		#end
 	}
 
@@ -75,6 +90,24 @@ class Texture extends TextureBase
 	{
 		if (super.__setSamplerState(state))
 		{
+			#if lime_bgfx
+			if (__context.isBGFX)
+			{
+				if (state != null && state.filter != null)
+				{
+					switch (state.filter)
+					{
+						case ANISOTROPIC2X, ANISOTROPIC4X, ANISOTROPIC8X, ANISOTROPIC16X:
+							__samplerStateFlags |= __context.bgfx.SAMPLER_MAG_ANISOTROPIC;
+							__samplerStateFlags |= __context.bgfx.SAMPLER_MIN_ANISOTROPIC;
+						default:
+					}
+				}
+
+				return true;
+			}
+			#end
+
 			#if (lime_opengl || lime_opengles)
 			if (__context.__maxTextureMaxAnisotropy != 0)
 			{
@@ -101,17 +134,6 @@ class Texture extends TextureBase
 					aniso = __context.__maxTextureMaxAnisotropy;
 
 				__context.gl.texParameterf(__context.gl.TEXTURE_2D, __context.__textureMaxAnisotropy, aniso);
-			}
-			#elseif lime_bgfx
-			if (state != null && state.filter != null)
-			{
-				switch (state.filter)
-				{
-					case ANISOTROPIC2X, ANISOTROPIC4X, ANISOTROPIC8X, ANISOTROPIC16X:
-						__samplerStateFlags |= __context.bgfx.SAMPLER_MAG_ANISOTROPIC;
-						__samplerStateFlags |= __context.bgfx.SAMPLER_MIN_ANISOTROPIC;
-					default:
-				}
 			}
 			#end
 
