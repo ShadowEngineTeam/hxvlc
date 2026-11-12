@@ -8,8 +8,6 @@ import openfl.display3D.textures.TextureBase;
 
 /**
  * This class is a texture that extends TextureBase for efficient video frame rendering.
- *
- * A Lime build has one renderer, bgfx or OpenGL, and the code for the other one is compiled out.
  */
 @:access(openfl.display3D.Context3D)
 class Texture extends TextureBase
