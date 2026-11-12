@@ -6,9 +6,7 @@ import lime.utils.UInt8Array;
 import openfl.display3D.Context3D;
 import openfl.display3D.textures.TextureBase;
 
-/**
- * This class is a texture that extends TextureBase for efficient video frame rendering.
- */
+/** This class is a texture that extends TextureBase for efficient video frame rendering. */
 @:access(openfl.display3D.Context3D)
 class Texture extends TextureBase
 {
